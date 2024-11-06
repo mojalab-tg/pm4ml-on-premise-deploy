@@ -1,0 +1,18 @@
+{
+  "subject": {
+    "CN": "server.moov.tg",
+    "C": "TG",
+    "L": "Lome",
+    "O": "Moov",
+    "OU": "Moov"
+  },
+  "extensions": {
+    "subjectAltName": {
+      "dns": [
+      ],
+      "ips": [
+        "192.168.5.97"
+      ]
+    }
+  }
+}

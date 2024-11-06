@@ -13,7 +13,8 @@ version: '3.7'
 services:
 
   frontend:
-    image: pm4ml/mojaloop-payment-manager-ui:1.14.0
+    image: pm4ml/mojaloop-payment-manager-ui:1.17.6
+    # build: ../payment-manager-ui/
     environment:
       - API_BASE_URL=http://localhost:4010
     ports:
@@ -39,11 +40,12 @@ services:
       - portal
 
   experience-api:
-    image: pm4ml/mojaloop-payment-manager-experience-api:2.0.5
+    # image: pm4ml/mojaloop-payment-manager-experience-api:2.0.5
+    image: pm4ml/mojaloop-payment-manager-experience-api:3.0.0-snapshot.11    # build: ../experience-api/
     ports:
       - "4010:3000"
     environment:
-      - APP_KEYS={{ CHANGE BEFORE INSTALL e.g. ootu1yoo5geeS7izai4ox1Yae1Eey6ai}}
+      - APP_KEYS=myroot
       - AUTH_CLIENT_ID=pm4ml-customer-ui
       - AUTH_CLIENT_SECRET=a857e3d7-ebd4-4451-aabd-bcb480dde1a3
       - AUTH_DISCOVERY_ENDPOINT=http://keycloak:8080/auth/realms/pm4ml/.well-known/openid-configuration
@@ -52,7 +54,7 @@ services:
       - AUTH_REDIRECT_URI=http://localhost:4010/auth
       - AUTH_RESOURCE_NAME=pm4ml-customer-ui
       - AUTH_SCOPES=roles
-      - DFSP_ID={{ CHANGE BEFORE INSTALL }}
+      - DFSP_ID=Moov
       - ENV_ID=1
       - MANAGEMENT_ENDPOINT=management-api:9000
       - METRICS_ENDPOINT=prometheus:9090
@@ -67,7 +69,8 @@ services:
       - portal
 
   management-api:
-    image: pm4ml/mojaloop-payment-manager-management-api:4.1.0
+    image: mojalabtg/pm4ml-management-api:1.0.1
+    build: ../management-api/
     environment:
       - AUTH_ENABLED=false
       - AUTH_PASS=pm4mltest123
@@ -75,51 +78,58 @@ services:
       - CACHE_HOST=redis
       - CACHE_SYNC_INTERVAL_SECONDS=10
       - CACHE_URL=redis://redis:6379
-      - DFSP_CA_PATH=/secrets
-      - DFSP_CA_PATH=/tlsServerCA.pem
       - DFSP_CSR_KEY=a
-      - DFSP_ID=dfsp1
+      - DFSP_ID=Moov
       - ENV_ID=1
-      - MCM_API_TOKEN={{ REQUIRED BEFORE INSTALL }}
+      - MCM_API_TOKEN=myroot
       - MCM_CLIENT_REFRESH_INTERVAL=180000
       - MCM_CLIENT_SECRETS_LOCATION=/secrets
-      - MCM_SERVER_ENDPOINT=localhost:9001
+      - MCM_SERVER_ENDPOINT=https://mcm.mojalab.gouv.tg/api
       - P12_PASS_PHRASE=SOME_S3C4R3_P@SS
       - PK_SECRETS_LOCATION=/secrets
       - PRIVATE_KEY_ALGORITHM=rsa
       - PRIVATE_KEY_LENGTH=4096
-      - TLS_SERVER_PRIVATE_KEY=/tlsServerPvtKey.key
-      - TLS_SERVER_PRIVATE_KEY=a
+      # - TLS_SERVER_PRIVATE_KEY=a
       - WS_PORT=4003
       - WS_URL=sdk-scheme-adapter
       - dfspCsrPrivateKeyAlgorithm=rsa
-      - dfspCsrPrivateKeyLength=4096
+      - dfspCsrPrivateKeyLength=4096co
       - p12PassPhrase=SOME_S3C4R3_P@SS
-      - tlsClientCSRParametersPath=/resources/tlsClientCSRParameters.json
-      - tlsServerCAPath=/tlsServerCA.pem
-      - tlsServerCSRParametersPath=/resources/tlsServerCSRParameters.json
-      - tlsServerPvtKeyPath=/tlsServerPvtKey.key
-      - VAULT_ENDPOINT=http://vault-dev:8233
-      - VAULT_PKI_BASE_DOMAIN=example.com
+      # - caCSRParametersPath=/resources/caCSRParameters.json
+      # - tlsClientCSRParametersPath=/resources/tlsClientCSRParameters.json
+      # - tlsServerCAPath=/tlsServerCA.pem
+      - WHITELIST_IP=192.168.5.97
+      - CA_CSR_PARAMETERS=/resources/caCSRParameters.json
+      - DFSP_CLIENT_CSR_PARAMETERS=/resources/tlsClientCSRParameters.json
+      - DFSP_SERVER_CSR_PARAMETERS=/resources/tlsServerCSRParameters.json
+      - MOJALOOP_CONNECTOR_FQDN=connector.moov.tg
+      # - tlsServerCSRParametersPath=/resources/tlsServerCSRParameters.json
+      # - tlsServerPvtKeyPath=/tlsServerPvtKey.key
+      - VAULT_ENDPOINT=http://192.168.5.97:8233
+      - HUB_IAM_PROVIDER_URL=http://192.168.5.97:80
+      - VAULT_PKI_BASE_DOMAIN=moov.tg
       - VAULT_AUTH_METHOD=APP_ROLE
       - VAULT_ROLE_ID_FILE=/vault/role-id
       - VAULT_ROLE_SECRET_ID_FILE=/vault/secret-id
-      - VAULT_PKI_SERVER_ROLE=server-role
-      - VAULT_PKI_CLIENT_ROLE=client-role
+      - VAULT_PKI_SERVER_ROLE=example.com
+      - VAULT_PKI_CLIENT_ROLE=example.com
       - VAULT_MOUNT_PKI=pki
       - VAULT_MOUNT_KV=secrets
       - CERT_MANAGER_ENABLED=false
 
     volumes:
       # - "/tmp/secrets:/secrets"
+      - ./resources:/resources
       - ./vault/tmp:/vault
+      - ./secrets/tlsServerPvtKey.key:/tlsServerPvtKey.key
+      - ./secrets/tlsServerCA.pem:/tlsServerCA.pem
     depends_on:
       redis:
         condition: service_started
       keycloak:
         condition: service_started
-      vault-dev:
-        condition: service_healthy
+      # vault-dev:
+      #   condition: service_healthy
     profiles:
       - portal
 
@@ -176,7 +186,7 @@ services:
       - CACHE_HOST=redis
       - CACHE_PORT=6379
       - CACHE_URL=redis://redis:6379
-      - DFSP_ID=dfsp1
+      - DFSP_ID=Moov
       - ENABLE_TEST_FEATURES=true
       - INBOUND_LISTEN_PORT=4000
       - INBOUND_MUTUAL_TLS_ENABLED=false
@@ -261,28 +271,32 @@ services:
     command:
       - sh
       - /usr/share/nginx/start.sh
-  vault-dev:
-    image: vault:1.2.1
-    restart: always
-    container_name: vault-dev
-    environment:
-      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8233
-      VAULT_ADDR: http://127.0.0.1:8233
-      VAULT_DEV_ROOT_TOKEN_ID: "myroot"
-      VAULT_LOCAL_CONFIG: '{"backend": {"file": {"path": "/vault/file"}}, "default_lease_ttl": "168h", "max_lease_ttl": "720h"}'
-    ports:
-      - "8233:8233"
-    volumes:
-      - ./vault/tmp:/vault/tmp
-      - ./vault/docker-entrypoint.sh:/usr/local/bin/docker-entrypoint.sh
-    cap_add:
-      - IPC_LOCK
-    healthcheck:
-      test: ["CMD-SHELL", "test -f /tmp/service_started"]
-      timeout: 1s
-      retries: 20
-    profiles:
-      - portal
+  # vault-dev:
+  #   image: vault:1.2.1
+  #   restart: always
+  #   container_name: vault-dev
+  #   environment:
+  #     VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8233
+  #     VAULT_ADDR: http://127.0.0.1:8233
+  #     VAULT_DEV_ROOT_TOKEN_ID: "myroot"
+  #     VAULT_LOCAL_CONFIG: '{"backend": {"file": {"path": "/vault/file"}}, "default_lease_ttl": "168h", "max_lease_ttl": "720h"}'
+  #   ports:
+  #     - "8233:8233"
+  #   volumes:
+  #     - ./vault/tmp:/vault/tmp
+  #     - ./vault/docker-entrypoint.sh:/usr/local/bin/docker-entrypoint.sh
+  #   cap_add:
+  #     - IPC_LOCK
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "test -f /tmp/service_started"]
+  #     timeout: 1s
+  #     retries: 20
+  #   profiles:
+  #     - portal
+
 networks:
   default:
-    name: payment-manager
+    driver: bridge
+# networks:
+#   default:
+#     name: payment-manager

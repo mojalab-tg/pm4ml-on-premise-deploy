@@ -1,0 +1,18 @@
+{
+    "subject": {
+      "CN": "test.tg",
+      "C": "TG",
+      "L": "Lome",
+      "O": "test",
+      "OU": "test"
+    },
+    "extensions": {
+      "subjectAltName": {
+        "dns": [
+        ],
+        "ips": [
+          "192.168.0.0"
+        ]
+      }
+    }
+}
