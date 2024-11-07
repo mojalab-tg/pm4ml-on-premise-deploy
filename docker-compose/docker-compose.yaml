@@ -1,24 +1,22 @@
-version: '3.7'
+version: "3.7"
 #
 #  Component arrangement is as below:
-#  
+#
 #  ┌────────────┐    ┌────────────┐   ┌─────────────┐    ┌──────────┐
 #  │            │    │            │   │             │    │          │
 #  │ Simulator  ├───►│ Simulator  ├──►│  SDK Scheme ├───►│  Switch  │
 #  │ Backend    │    │   Core     │   │    Adapter  │    │          │
 #  │   (TTK)    │◄───┤ Connector  │◄──┤             │◄───┤  (TTK)   │
 #  └────────────┘    └────────────┘   └─────────────┘    └──────────┘
-#  
+#
 
 services:
-
   frontend:
     image: pm4ml/mojaloop-payment-manager-ui:1.17.6
-    # build: ../payment-manager-ui/
     environment:
       - API_BASE_URL=http://localhost:4010
     ports:
-       - "8081:8080"
+      - "8081:8080"
     depends_on:
       - experience-api
     profiles:
@@ -40,8 +38,7 @@ services:
       - portal
 
   experience-api:
-    # image: pm4ml/mojaloop-payment-manager-experience-api:2.0.5
-    image: pm4ml/mojaloop-payment-manager-experience-api:3.0.0-snapshot.11    # build: ../experience-api/
+    image: pm4ml/mojaloop-payment-manager-experience-api:3.0.0-snapshot.11
     ports:
       - "4010:3000"
     environment:
@@ -54,7 +51,7 @@ services:
       - AUTH_REDIRECT_URI=http://localhost:4010/auth
       - AUTH_RESOURCE_NAME=pm4ml-customer-ui
       - AUTH_SCOPES=roles
-      - DFSP_ID=Moov
+      - DFSP_ID=dfspId
       - ENV_ID=1
       - MANAGEMENT_ENDPOINT=management-api:9000
       - METRICS_ENDPOINT=prometheus:9090
@@ -70,7 +67,6 @@ services:
 
   management-api:
     image: mojalabtg/pm4ml-management-api:1.0.1
-    build: ../management-api/
     environment:
       - AUTH_ENABLED=false
       - AUTH_PASS=pm4mltest123
@@ -79,12 +75,12 @@ services:
       - CACHE_SYNC_INTERVAL_SECONDS=10
       - CACHE_URL=redis://redis:6379
       - DFSP_CSR_KEY=a
-      - DFSP_ID=Moov
+      - DFSP_ID=dfspId
       - ENV_ID=1
       - MCM_API_TOKEN=myroot
       - MCM_CLIENT_REFRESH_INTERVAL=180000
       - MCM_CLIENT_SECRETS_LOCATION=/secrets
-      - MCM_SERVER_ENDPOINT=https://mcm.mojalab.gouv.tg/api
+      - MCM_SERVER_ENDPOINT= #{{example : http://connection-manager.gouv.tg/api}}
       - P12_PASS_PHRASE=SOME_S3C4R3_P@SS
       - PK_SECRETS_LOCATION=/secrets
       - PRIVATE_KEY_ALGORITHM=rsa
@@ -98,16 +94,16 @@ services:
       # - caCSRParametersPath=/resources/caCSRParameters.json
       # - tlsClientCSRParametersPath=/resources/tlsClientCSRParameters.json
       # - tlsServerCAPath=/tlsServerCA.pem
-      - WHITELIST_IP=192.168.5.97
+      - WHITELIST_IP=192.168.5.178
       - CA_CSR_PARAMETERS=/resources/caCSRParameters.json
       - DFSP_CLIENT_CSR_PARAMETERS=/resources/tlsClientCSRParameters.json
       - DFSP_SERVER_CSR_PARAMETERS=/resources/tlsServerCSRParameters.json
-      - MOJALOOP_CONNECTOR_FQDN=connector.moov.tg
+      - MOJALOOP_CONNECTOR_FQDN= #{{ example : connector.dfspId.tg}}
       # - tlsServerCSRParametersPath=/resources/tlsServerCSRParameters.json
       # - tlsServerPvtKeyPath=/tlsServerPvtKey.key
-      - VAULT_ENDPOINT=http://192.168.5.97:8233
-      - HUB_IAM_PROVIDER_URL=http://192.168.5.97:80
-      - VAULT_PKI_BASE_DOMAIN=moov.tg
+      - VAULT_ENDPOINT=http://vault-dev:8233
+      - HUB_IAM_PROVIDER_URL=http://localhost:8081
+      - VAULT_PKI_BASE_DOMAIN=example.com
       - VAULT_AUTH_METHOD=APP_ROLE
       - VAULT_ROLE_ID_FILE=/vault/role-id
       - VAULT_ROLE_SECRET_ID_FILE=/vault/secret-id
@@ -116,6 +112,7 @@ services:
       - VAULT_MOUNT_PKI=pki
       - VAULT_MOUNT_KV=secrets
       - CERT_MANAGER_ENABLED=false
+      # - CALLBACK_URL={{ example : http://connector.dfspId.tg:443}}
 
     volumes:
       # - "/tmp/secrets:/secrets"
@@ -175,9 +172,9 @@ services:
   sdk-scheme-adapter:
     image: mojaloop/sdk-scheme-adapter:v23.6.0-snapshot.2
     command:
-    - sh
-    - -c
-    - "yarn start:api-svc"
+      - sh
+      - -c
+      - "yarn start:api-svc"
     environment:
       - AUTO_ACCEPT_PARTY=true
       - AUTO_ACCEPT_QUOTES=true
@@ -186,7 +183,7 @@ services:
       - CACHE_HOST=redis
       - CACHE_PORT=6379
       - CACHE_URL=redis://redis:6379
-      - DFSP_ID=Moov
+      - DFSP_ID=dfspId
       - ENABLE_TEST_FEATURES=true
       - INBOUND_LISTEN_PORT=4000
       - INBOUND_MUTUAL_TLS_ENABLED=false
@@ -271,32 +268,30 @@ services:
     command:
       - sh
       - /usr/share/nginx/start.sh
-  # vault-dev:
-  #   image: vault:1.2.1
-  #   restart: always
-  #   container_name: vault-dev
-  #   environment:
-  #     VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8233
-  #     VAULT_ADDR: http://127.0.0.1:8233
-  #     VAULT_DEV_ROOT_TOKEN_ID: "myroot"
-  #     VAULT_LOCAL_CONFIG: '{"backend": {"file": {"path": "/vault/file"}}, "default_lease_ttl": "168h", "max_lease_ttl": "720h"}'
-  #   ports:
-  #     - "8233:8233"
-  #   volumes:
-  #     - ./vault/tmp:/vault/tmp
-  #     - ./vault/docker-entrypoint.sh:/usr/local/bin/docker-entrypoint.sh
-  #   cap_add:
-  #     - IPC_LOCK
-  #   healthcheck:
-  #     test: ["CMD-SHELL", "test -f /tmp/service_started"]
-  #     timeout: 1s
-  #     retries: 20
-  #   profiles:
-  #     - portal
+
+  vault-dev:
+    image: vault:1.13.3
+    restart: always
+    environment:
+      VAULT_DEV_LISTEN_ADDRESS: http://vault-dev:8233
+      VAULT_ADDR: http://vault-dev:8233
+      VAULT_API_ADDR: http://vault-dev:8233
+      VAULT_DEV_ROOT_TOKEN_ID: "myroot"
+      VAULT_LOCAL_CONFIG: '{"backend": {"file": {"path": "/vault/file"}}, "default_lease_ttl": "168h", "max_lease_ttl": "720h"}'
+    ports:
+      - "8233:8233"
+    volumes:
+      - ./vault/tmp:/vault/tmp
+      - ./vault/docker-entrypoint.sh:/usr/local/bin/docker-entrypoint.sh
+    cap_add:
+      - IPC_LOCK
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/service_started"]
+      timeout: 1s
+      retries: 20
+    profiles:
+      - portal
 
 networks:
   default:
     driver: bridge
-# networks:
-#   default:
-#     name: payment-manager

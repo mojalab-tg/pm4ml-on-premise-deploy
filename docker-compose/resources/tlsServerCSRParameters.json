@@ -1,10 +1,10 @@
 {
   "subject": {
-    "CN": "server.moov.tg",
+    "CN": "server.dfspId.tg",
     "C": "TG",
     "L": "Lome",
-    "O": "Moov",
-    "OU": "Moov"
+    "O": "dfspId",
+    "OU": "dfspId"
   },
   "extensions": {
     "subjectAltName": {
