@@ -1,10 +1,10 @@
 {
   "subject": {
-    "CN": "server.moov.tg",
+    "CN": "server.mentd.tg",
     "C": "TG",
     "L": "Lome",
-    "O": "Moov",
-    "OU": "Moov"
+    "O": "Mentd_test",
+    "OU": "Mentd_test"
   },
   "extensions": {
     "subjectAltName": {

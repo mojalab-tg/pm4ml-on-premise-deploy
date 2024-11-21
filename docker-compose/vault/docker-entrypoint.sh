@@ -1,134 +1,191 @@
 #!/usr/bin/dumb-init /bin/sh
 set -e
-
-# Note above that we run dumb-init as PID 1 in order to reap zombie processes
-# as well as forward signals to all processes in its session. Normally, sh
-# wouldn't do either of these functions so we'd leak zombies as well as do
-# unclean termination of all our sub-processes.
-
-# Prevent core dumps
 ulimit -c 0
 
-# Allow setting VAULT_REDIRECT_ADDR and VAULT_CLUSTER_ADDR using an interface
-# name instead of an IP address. The interface name is specified using
-# VAULT_REDIRECT_INTERFACE and VAULT_CLUSTER_INTERFACE environment variables. If
-# VAULT_*_ADDR is also set, the resulting URI will combine the protocol and port
-# number with the IP of the named interface.
-get_addr () {
-    local if_name=$1
-    local uri_template=$2
-    ip addr show dev $if_name | awk -v uri=$uri_template '/\s*inet\s/ { \
-      ip=gensub(/(.+)\/.+/, "\\1", "g", $2); \
-      print gensub(/^(.+:\/\/).+(:.+)$/, "\\1" ip "\\2", "g", uri); \
-      exit}'
+DOMAIN_NAME="127.0.0.1"
+PORT="8200"
+VAULT_CONFIG_DIR="/etc/vault.d"
+VAULT_DATA_DIR="/var/lib/vault"
+VAULT_TMP_DIR="/vault/tmp"
+UNSEAL_KEY_1_FILE="/vault/tmp/unseal_key-1"
+UNSEAL_KEY_2_FILE="/vault/tmp/unseal_key-2"
+UNSEAL_KEY_3_FILE="/vault/tmp/unseal_key-3"
+ROOT_TOKEN_FILE="/vault/tmp/root_token"
+
+# Préparation des répertoires
+mkdir -p $VAULT_CONFIG_DIR $VAULT_DATA_DIR $VAULT_TMP_DIR
+chown -R vault:vault $VAULT_CONFIG_DIR $VAULT_DATA_DIR $VAULT_TMP_DIR
+
+export VAULT_ADDR="http://127.0.0.1:$PORT"
+
+if test -f "$VAULT_CONFIG_DIR/vault.hcl"; then
+  VAULT_STATUS="true"
+else
+  VAULT_STATUS="false"
+fi
+
+echo "VAULT_STATUS : $VAULT_STATUS"
+
+# Vérifier si Vault est déjà initialisé
+if "$VAULT_STATUS"; then
+
+  echo "Vault est déjà initialisé."
+
+  # Lancer Vault
+  echo "Vault n'est pas encore démarré. Lancement de Vault..."
+  vault server -config=$VAULT_CONFIG_DIR &
+  VAULT_PID=$!
+
+  sleep 5
+
+  # Sauvegarder les clés et le token dans des fichiers sécurisés
+  UNSEAL_KEY_1=$(cat "$UNSEAL_KEY_1_FILE")
+  UNSEAL_KEY_2=$(cat "$UNSEAL_KEY_2_FILE")
+  UNSEAL_KEY_3=$(cat "$UNSEAL_KEY_3_FILE")
+  ROOT_TOKEN=$(cat "$ROOT_TOKEN_FILE")
+
+  echo "Clés de déverrouillage et token root enregistrés."
+
+  # Déverrouiller Vault avec les clés d'unseal
+  vault operator unseal $UNSEAL_KEY_1
+  vault operator unseal $UNSEAL_KEY_2
+  vault operator unseal $UNSEAL_KEY_3
+  vault login $ROOT_TOKEN
+
+  touch /tmp/service_started
+
+  tail -f /dev/null
+
+else
+  echo "Vault n'est pas initialisé. Initialisation en cours..."
+
+  # Configuration de Vault pour un backend de fichiers simple
+  cat <<EOF >$VAULT_CONFIG_DIR/vault.hcl
+storage "file" {
+  path = "/var/lib/vault"
 }
+listener "tcp" {
+  address     = "0.0.0.0:$PORT"
+  tls_disable = 1
+}
+api_addr = "http://127.0.0.1:$PORT"
+ui = true
+EOF
 
-if [ -n "$VAULT_REDIRECT_INTERFACE" ]; then
-    export VAULT_REDIRECT_ADDR=$(get_addr $VAULT_REDIRECT_INTERFACE ${VAULT_REDIRECT_ADDR:-"http://0.0.0.0:8200"})
-    echo "Using $VAULT_REDIRECT_INTERFACE for VAULT_REDIRECT_ADDR: $VAULT_REDIRECT_ADDR"
-fi
-if [ -n "$VAULT_CLUSTER_INTERFACE" ]; then
-    export VAULT_CLUSTER_ADDR=$(get_addr $VAULT_CLUSTER_INTERFACE ${VAULT_CLUSTER_ADDR:-"https://0.0.0.0:8201"})
-    echo "Using $VAULT_CLUSTER_INTERFACE for VAULT_CLUSTER_ADDR: $VAULT_CLUSTER_ADDR"
-fi
+  # Lancer Vault
+  echo "Vault n'est pas encore démarré. Lancement de Vault..."
+  vault server -config=$VAULT_CONFIG_DIR &
+  VAULT_PID=$!
 
-rm -f /tmp/service_started
+  sleep 5
 
-# VAULT_CONFIG_DIR isn't exposed as a volume but you can compose additional
-# config files in there if you use this image as a base, or use
-# VAULT_LOCAL_CONFIG below.
-VAULT_CONFIG_DIR=/vault/config
+  # Initialiser Vault et récupérer la sortie JSON
+  INIT_OUTPUT=$(vault operator init -format=json -key-shares=3 -key-threshold=3)
+  echo "Etape 1 : Initialisation de Vault ============================================================================"
 
-# You can also set the VAULT_LOCAL_CONFIG environment variable to pass some
-# Vault configuration JSON without having to bind any volumes.
-if [ -n "$VAULT_LOCAL_CONFIG" ]; then
-    echo "$VAULT_LOCAL_CONFIG" > "$VAULT_CONFIG_DIR/local.json"
-fi
+  CLEANED_OUTPUT=$(echo "$INIT_OUTPUT" | sed -E 's/^[0-9:-]+\s*//')
 
-# If the user is trying to run Vault directly with some arguments, then
-# pass them to Vault.
-if [ "${1:0:1}" = '-' ]; then
-    set -- vault "$@"
-fi
+  # Extraction du root token et des unseal keys
+  ROOT_TOKEN=$(echo "$INIT_OUTPUT" | grep -o '"root_token": *"[^"]*"' | awk -F '": "' '{print $2}' | tr -d '"')
 
-# Look for Vault subcommands.
-if [ "$1" = 'server' ]; then
-    shift
-    set -- vault server \
-        -config="$VAULT_CONFIG_DIR" \
-        -dev-root-token-id="$VAULT_DEV_ROOT_TOKEN_ID" \
-        -dev-listen-address="${VAULT_DEV_LISTEN_ADDRESS:-"0.0.0.0:8200"}" \
-        "$@"
-elif [ "$1" = 'version' ]; then
-    # This needs a special case because there's no help output.
-    set -- vault "$@"
-elif vault --help "$1" 2>&1 | grep -q "vault $1"; then
-    # We can't use the return code to check for the existence of a subcommand, so
-    # we have to use grep to look for a pattern in the help output.
-    set -- vault "$@"
-fi
+  # Extraction des UNSEAL_KEYs
+  UNSEAL_KEY_1=$(echo "$CLEANED_OUTPUT" |
+    tr -d '\n' |
+    sed -n 's/.*"unseal_keys_b64":\s*\[\([^]]*\)\].*/\1/p' |
+    tr ',' '\n' |
+    sed -n '1p' |
+    tr -d '"' |
+    xargs)
 
-# If we are running Vault, make sure it executes as the proper user.
-if [ "$1" = 'vault' ]; then
-    if [ -z "$SKIP_CHOWN" ]; then
-        # If the config dir is bind mounted then chown it
-        if [ "$(stat -c %u /vault/config)" != "$(id -u vault)" ]; then
-            chown -R vault:vault /vault/config || echo "Could not chown /vault/config (may not have appropriate permissions)"
-        fi
+  UNSEAL_KEY_2=$(echo "$CLEANED_OUTPUT" |
+    tr -d '\n' |
+    sed -n 's/.*"unseal_keys_b64":\s*\[\([^]]*\)\].*/\1/p' |
+    tr ',' '\n' |
+    sed -n '2p' |
+    tr -d '"' |
+    xargs)
 
-        # If the logs dir is bind mounted then chown it
-        if [ "$(stat -c %u /vault/logs)" != "$(id -u vault)" ]; then
-            chown -R vault:vault /vault/logs
-        fi
+  UNSEAL_KEY_3=$(echo "$CLEANED_OUTPUT" |
+    tr -d '\n' |
+    sed -n 's/.*"unseal_keys_b64":\s*\[\([^]]*\)\].*/\1/p' |
+    tr ',' '\n' |
+    sed -n '3p' |
+    tr -d '"' |
+    xargs)
 
-        # If the file dir is bind mounted then chown it
-        if [ "$(stat -c %u /vault/file)" != "$(id -u vault)" ]; then
-            chown -R vault:vault /vault/file
-        fi
-    fi
+  # Sauvegarder les clés et le token dans des fichiers sécurisés
+  echo "$UNSEAL_KEY_1" >$UNSEAL_KEY_1_FILE
+  echo "$UNSEAL_KEY_2" >$UNSEAL_KEY_2_FILE
+  echo "$UNSEAL_KEY_3" >$UNSEAL_KEY_3_FILE
+  echo "$ROOT_TOKEN" >$ROOT_TOKEN_FILE
 
-    if [ -z "$SKIP_SETCAP" ]; then
-        # Allow mlock to avoid swapping Vault memory to disk
-        setcap cap_ipc_lock=+ep $(readlink -f $(which vault))
+  chmod 777 $UNSEAL_KEY_1_FILE $UNSEAL_KEY_2_FILE $UNSEAL_KEY_3_FILE $ROOT_TOKEN_FILE
 
-        # In the case vault has been started in a container without IPC_LOCK privileges
-        if ! vault -version 1>/dev/null 2>/dev/null; then
-            >&2 echo "Couldn't start vault with IPC_LOCK. Disabling IPC_LOCK, please use --privileged or --cap-add IPC_LOCK"
-            setcap cap_ipc_lock=-ep $(readlink -f $(which vault))
-        fi
-    fi
+  echo "Clés de déverrouillage et token root enregistrés."
 
-    if [ "$(id -u)" = '0' ]; then
-      set -- su-exec vault "$@"
-    fi
+  # Déverrouiller Vault avec les clés d'unseal
+  vault operator unseal $UNSEAL_KEY_1
+  vault operator unseal $UNSEAL_KEY_2
+  vault operator unseal $UNSEAL_KEY_3
+  vault login $ROOT_TOKEN
 fi
 
-"$@" &
+# Vérifier de nouveau l'état de Vault avant de continuer
+if vault status | grep -q "Sealed: true"; then
+  echo "Erreur : Vault est toujours scellé. Abandon du processus."
+  exit 1
+else
+  echo "Vault est déverrouillé, on continue."
+fi
 
+export VAULT_TOKEN=$ROOT_TOKEN
 
-sleep 3
+# Configurer Vault Agent pour le renouvellement automatique
+cat <<EOF >$VAULT_CONFIG_DIR/agent.hcl
+auto_auth {
+  method "approle" {
+    mount_path = "auth/approle"
+    config = {
+      role_id_file_path = "/vault/tmp/role-id"
+      secret_id_file_path = "/vault/tmp/secret-id"
+      remove_secret_id_file_after_reading = false
+    }
+  }
+  sink "file" {
+    config = {
+      path = "/vault/tmp/agent-token"
+    }
+  }
+}
+cache {
+  use_auto_auth_token = true
+}
+listener "tcp" {
+  address = "127.0.0.1:8100"
+  tls_disable = true
+}
+EOF
 
-export VAULT_TOKEN=$VAULT_DEV_ROOT_TOKEN_ID
-
+# Activer AppRole et configurer les rôles
 vault auth enable approle
-vault write auth/approle/role/my-role secret_id_ttl=1000m token_ttl=1000m token_max_ttl=1000m
-vault read -field role_id auth/approle/role/my-role/role-id > /vault/tmp/role-id
-vault write -field secret_id -f auth/approle/role/my-role/secret-id > /vault/tmp/secret-id
-# ROLE_ID=$(vault read -field role_id auth/approle/role/my-role/role-id)
-# SECRET_ID=$(vault write -field secret_id -f auth/approle/role/my-role/secret-id)
+vault write -f auth/approle/role/my-role secret_id_ttl=8760h token_ttl=16h token_max_ttl=8760h
+vault read -field role_id auth/approle/role/my-role/role-id >/vault/tmp/role-id
+vault write -field secret_id -f auth/approle/role/my-role/secret-id >/vault/tmp/secret-id
+
+# Activer des secrets et configurer des rôles de base
 vault secrets enable -path=pki pki
 vault secrets enable -path=secrets kv
 vault secrets tune -max-lease-ttl=97600h pki
 vault write -field=certificate pki/root/generate/internal \
-        common_name="example.com" \
-        ttl=87600h
+  common_name=$DOMAIN_NAME \
+  ttl=97600h
 vault write pki/config/urls \
-    issuing_certificates="http://127.0.0.1:8233/v1/pki/ca" \
-    crl_distribution_points="http://127.0.0.1:8233/v1/pki/crl"
-vault write pki/roles/example.com allowed_domains=example.com allow_subdomains=true allow_any_name=true allow_localhost=true enforce_hostnames=false max_ttl=97600h
+  issuing_certificates="http://127.0.0.1:$PORT/v1/pki/ca" \
+  crl_distribution_points="http://127.0.0.1:$PORT/v1/pki/crl"
+vault write pki/roles/$DOMAIN_NAME allowed_domains=$DOMAIN_NAME allow_subdomains=true allow_any_name=true allow_localhost=true enforce_hostnames=false max_ttl=8760h
 
-tee policy.hcl <<EOF
-# List, create, update, and delete key/value secrets
+# Créer une politique de base pour l'AppRole
+cat <<EOF >policy.hcl
 path "secrets/*"
 {
   capabilities = ["create", "read", "update", "delete", "list", "sudo"]
@@ -148,16 +205,17 @@ path "pki_int/*"
 {
   capabilities = ["create", "read", "update", "delete", "list", "sudo"]
 }
-
 EOF
 
 vault policy write test-policy policy.hcl
-
-vault write auth/approle/role/my-role policies=test-policy ttl=1h
+vault write auth/approle/role/my-role policies=test-policy ttl=8760h
 
 vault secrets enable -path=pki_int pki
 vault secrets tune -max-lease-ttl=43800h pki_int
-vault write pki_int/roles/example.com allowed_domains=example.com allow_subdomains=true allow_any_name=true allow_localhost=true enforce_hostnames=false max_ttl=600h
+vault write pki_int/roles//$DOMAIN_NAME allowed_domains=/$DOMAIN_NAME allow_subdomains=true allow_any_name=true allow_localhost=true enforce_hostnames=false max_ttl=8760h
+
+# Finalisation
+echo "Vault est configuré en mode production avec un renouvellement automatique."
 
 touch /tmp/service_started
 

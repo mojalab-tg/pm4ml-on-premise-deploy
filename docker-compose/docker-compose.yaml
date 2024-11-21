@@ -14,9 +14,8 @@ services:
 
   frontend:
     image: pm4ml/mojaloop-payment-manager-ui:1.17.6
-    # build: ../payment-manager-ui/
     environment:
-      - API_BASE_URL=http://localhost:4010
+      - API_BASE_URL=http://127.0.0.1:4010
     ports:
        - "8081:8080"
     depends_on:
@@ -29,7 +28,7 @@ services:
     environment:
       - KEYCLOAK_USER=admin
       - KEYCLOAK_PASSWORD=admin
-      - KEYCLOAK_FRONTEND_URL=http://localhost:8080/auth
+      - KEYCLOAK_FRONTEND_URL=http://127.0.0.1:8080/auth
       - KEYCLOAK_IMPORT=/tmp/pm4ml-realm.json
       - DB_VENDOR=h2
     volumes:
@@ -40,8 +39,7 @@ services:
       - portal
 
   experience-api:
-    # image: pm4ml/mojaloop-payment-manager-experience-api:2.0.5
-    image: pm4ml/mojaloop-payment-manager-experience-api:3.0.0-snapshot.11    # build: ../experience-api/
+    image: pm4ml/mojaloop-payment-manager-experience-api:3.0.0-snapshot.11
     ports:
       - "4010:3000"
     environment:
@@ -49,12 +47,12 @@ services:
       - AUTH_CLIENT_ID=pm4ml-customer-ui
       - AUTH_CLIENT_SECRET=a857e3d7-ebd4-4451-aabd-bcb480dde1a3
       - AUTH_DISCOVERY_ENDPOINT=http://keycloak:8080/auth/realms/pm4ml/.well-known/openid-configuration
-      - AUTH_LOGGED_IN_LANDING_URL=http://localhost:8081/
+      - AUTH_LOGGED_IN_LANDING_URL=http://127.0.0.1:8081/
       - AUTH_REDIRECT_NAME=pm4ml-customer-ui
-      - AUTH_REDIRECT_URI=http://localhost:4010/auth
+      - AUTH_REDIRECT_URI=http://127.0.0.1:4010/auth
       - AUTH_RESOURCE_NAME=pm4ml-customer-ui
       - AUTH_SCOPES=roles
-      - DFSP_ID=Moov
+      - DFSP_ID=mentd-test
       - ENV_ID=1
       - MANAGEMENT_ENDPOINT=management-api:9000
       - METRICS_ENDPOINT=prometheus:9090
@@ -69,8 +67,7 @@ services:
       - portal
 
   management-api:
-    image: mojalabtg/pm4ml-management-api:1.0.1
-    build: ../management-api/
+    image: mojalabtg/pm4ml-management-api:1.0.3
     environment:
       - AUTH_ENABLED=false
       - AUTH_PASS=pm4mltest123
@@ -79,12 +76,12 @@ services:
       - CACHE_SYNC_INTERVAL_SECONDS=10
       - CACHE_URL=redis://redis:6379
       - DFSP_CSR_KEY=a
-      - DFSP_ID=Moov
+      - DFSP_ID=mentd-test
       - ENV_ID=1
       - MCM_API_TOKEN=myroot
       - MCM_CLIENT_REFRESH_INTERVAL=180000
       - MCM_CLIENT_SECRETS_LOCATION=/secrets
-      - MCM_SERVER_ENDPOINT=https://mcm.mojalab.gouv.tg/api
+      - MCM_SERVER_ENDPOINT=https://192.168.5.178:3001/api
       - P12_PASS_PHRASE=SOME_S3C4R3_P@SS
       - PK_SECRETS_LOCATION=/secrets
       - PRIVATE_KEY_ALGORITHM=rsa
@@ -98,21 +95,20 @@ services:
       # - caCSRParametersPath=/resources/caCSRParameters.json
       # - tlsClientCSRParametersPath=/resources/tlsClientCSRParameters.json
       # - tlsServerCAPath=/tlsServerCA.pem
-      - WHITELIST_IP=192.168.5.97
+      - WHITELIST_IP=127.0.0.1
       - CA_CSR_PARAMETERS=/resources/caCSRParameters.json
       - DFSP_CLIENT_CSR_PARAMETERS=/resources/tlsClientCSRParameters.json
       - DFSP_SERVER_CSR_PARAMETERS=/resources/tlsServerCSRParameters.json
-      - MOJALOOP_CONNECTOR_FQDN=connector.moov.tg
-      # - tlsServerCSRParametersPath=/resources/tlsServerCSRParameters.json
-      # - tlsServerPvtKeyPath=/tlsServerPvtKey.key
-      - VAULT_ENDPOINT=http://192.168.5.97:8233
-      - HUB_IAM_PROVIDER_URL=http://192.168.5.97:80
-      - VAULT_PKI_BASE_DOMAIN=moov.tg
+      - MOJALOOP_CONNECTOR_FQDN=connector.mentd-test.tg
+      - VAULT_ENDPOINT=http://192.168.5.178:8200
+      - HUB_IAM_PROVIDER_URL=http://127.0.0.1:80
+      - VAULT_PKI_BASE_DOMAIN=mentd-test.tg
+      - CALLBACK_URL=http://connector.mentd-test.tg:443
       - VAULT_AUTH_METHOD=APP_ROLE
       - VAULT_ROLE_ID_FILE=/vault/role-id
       - VAULT_ROLE_SECRET_ID_FILE=/vault/secret-id
-      - VAULT_PKI_SERVER_ROLE=example.com
-      - VAULT_PKI_CLIENT_ROLE=example.com
+      - VAULT_PKI_SERVER_ROLE=127.0.0.1
+      - VAULT_PKI_CLIENT_ROLE=127.0.0.1
       - VAULT_MOUNT_PKI=pki
       - VAULT_MOUNT_KV=secrets
       - CERT_MANAGER_ENABLED=false
@@ -128,7 +124,7 @@ services:
         condition: service_started
       keycloak:
         condition: service_started
-      # vault-dev:
+      # vault-mpm:
       #   condition: service_healthy
     profiles:
       - portal
@@ -156,7 +152,7 @@ services:
     ports:
       - "6061:6060"
     environment:
-      - API_BASE_URL=http://localhost:5051
+      - API_BASE_URL=http://127.0.0.1:5051
       - AUTH_ENABLED=FALSE
     command:
       - sh
@@ -186,7 +182,7 @@ services:
       - CACHE_HOST=redis
       - CACHE_PORT=6379
       - CACHE_URL=redis://redis:6379
-      - DFSP_ID=Moov
+      - DFSP_ID=mentd-test
       - ENABLE_TEST_FEATURES=true
       - INBOUND_LISTEN_PORT=4000
       - INBOUND_MUTUAL_TLS_ENABLED=false
@@ -206,9 +202,17 @@ services:
       - OUT_CLIENT_CERT_PATH=/secrets/outbound-cert.pem
       - OUT_CLIENT_KEY_PATH=/secrets/outbound-key.pem
       - PEER_ENDPOINT=mojaloop-testing-toolkit:4040
-      - ALS_ENDPOINT=mojaloop-testing-toolkit:4040
-      - FX_QUOTES_ENDPOINT=mojaloop-testing-toolkit:4040
-      - FX_TRANSFERS_ENPOINT=mojaloop-testing-toolkit:4040
+      #- ALS_ENDPOINT=mojaloop-testing-toolkit:4040
+      - ALS_ENDPOINT=account-lookup-localhost
+      - QUOTES_ENDPOINT=quoting-localhost
+      - TRANSACTION_REQUESTS_ENDPOINT=transaction-requests-localhost
+      - TRANSFERS_ENDPOINT=transfers-localhost
+      - BULK_QUOTES_ENDPOINT=quoting-localhost
+      - BULK_TRANSFERS_ENDPOINT=bulk-transfers-localhost
+      #- FX_QUOTES_ENDPOINT=mojaloop-testing-toolkit:4040
+      #- FX_TRANSFERS_ENPOINT=mojaloop-testing-toolkit:4040
+      - FX_QUOTES_ENDPOINT=quoting-localhost
+      - FX_TRANSFERS_ENPOINT=transfers-localhost
       - TEST_CA_CERT_PATH=/secrets/test-cacert.pem
       - TEST_CLIENT_CERT_PATH=/secrets/test-cert.pem
       - TEST_CLIENT_KEY_PATH=/secrets/test-key.pem
@@ -266,33 +270,33 @@ services:
     ports:
       - "6060:6060"
     environment:
-      - API_BASE_URL=http://localhost:5050
+      - API_BASE_URL=http://127.0.0.1:5050
       - AUTH_ENABLED=FALSE
     command:
       - sh
       - /usr/share/nginx/start.sh
-  # vault-dev:
-  #   image: vault:1.2.1
-  #   restart: always
-  #   container_name: vault-dev
-  #   environment:
-  #     VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8233
-  #     VAULT_ADDR: http://127.0.0.1:8233
-  #     VAULT_DEV_ROOT_TOKEN_ID: "myroot"
-  #     VAULT_LOCAL_CONFIG: '{"backend": {"file": {"path": "/vault/file"}}, "default_lease_ttl": "168h", "max_lease_ttl": "720h"}'
-  #   ports:
-  #     - "8233:8233"
-  #   volumes:
-  #     - ./vault/tmp:/vault/tmp
-  #     - ./vault/docker-entrypoint.sh:/usr/local/bin/docker-entrypoint.sh
-  #   cap_add:
-  #     - IPC_LOCK
-  #   healthcheck:
-  #     test: ["CMD-SHELL", "test -f /tmp/service_started"]
-  #     timeout: 1s
-  #     retries: 20
-  #   profiles:
-  #     - portal
+
+  vault-mpm:
+    image: vault:1.13.3
+    restart: always
+    environment:
+      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+      VAULT_ADDR: http://127.0.0.1:8200
+      VAULT_API_ADDR: http://127.0.0.1:8200
+      VAULT_DEV_ROOT_TOKEN_ID: "myroot"
+      VAULT_LOCAL_CONFIG: '{"backend": {"file": {"path": "/vault/file"}}, "default_lease_ttl": "8760h", "max_lease_ttl": "87600h"}'
+    ports:
+      - "8200:8200"
+    volumes:
+      - ./vault/tmp:/vault/tmp
+      - ./vault/docker-entrypoint.sh:/usr/local/bin/docker-entrypoint.sh
+    cap_add:
+      - IPC_LOCK
+    # entrypoint: ["/bin/sh", "-c", "chmod +x /vault/docker-entrypoint.sh && exec /vault/docker-entrypoint.sh"]
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/service_started"]
+      timeout: 1s
+      retries: 20
 
 networks:
   default:
